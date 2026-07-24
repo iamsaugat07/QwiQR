@@ -7,6 +7,13 @@
         android:maxSdkVersion="30" />
     <!-- API 31+: required to receive ACL connect/disconnect broadcasts -->
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
+    <!-- API 31+: required to discover nearby devices for in-app pairing.
+         neverForLocation tells the OS this app doesn't derive physical
+         location from scan results, so ACCESS_FINE_LOCATION isn't required
+         alongside it. -->
+    <uses-permission
+        android:name="android.permission.BLUETOOTH_SCAN"
+        android:usesPermissionFlags="neverForLocation" />
 
     <application
         android:allowBackup="false"

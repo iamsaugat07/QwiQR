@@ -14,6 +14,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import com.example.itemtracker.scan.DevicePairingManager
 import com.example.itemtracker.scan.ScanScreen
 import com.example.itemtracker.scan.ScanViewModel
 import com.example.itemtracker.scan.ScannerConnectionMonitor
@@ -23,17 +24,21 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: ScanViewModel by viewModels()
     private lateinit var connectionMonitor: ScannerConnectionMonitor
+    private lateinit var pairingManager: DevicePairingManager
 
-    private val requestBluetoothPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    private val requestBluetoothPermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         connectionMonitor = ScannerConnectionMonitor(applicationContext)
+        pairingManager = DevicePairingManager(applicationContext)
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            requestBluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+            requestBluetoothPermissions.launch(
+                arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+            )
         }
 
         setContent {
@@ -44,7 +49,19 @@ class MainActivity : ComponentActivity() {
                 ) {
                     val scans by viewModel.scans.collectAsState()
                     val status by connectionMonitor.status.collectAsState()
-                    ScanScreen(scans = scans, status = status, onClear = viewModel::clearHistory)
+                    val pairingDevices by pairingManager.devices.collectAsState()
+                    val pairingScanning by pairingManager.scanning.collectAsState()
+                    ScanScreen(
+                        scans = scans,
+                        status = status,
+                        onClear = viewModel::clearHistory,
+                        onReconnect = connectionMonitor::attemptReconnect,
+                        pairingDevices = pairingDevices,
+                        pairingScanning = pairingScanning,
+                        onStartPairingScan = pairingManager::startScan,
+                        onStopPairingScan = pairingManager::stopScan,
+                        onPairDevice = pairingManager::pair,
+                    )
                 }
             }
         }
@@ -53,10 +70,12 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         connectionMonitor.start()
+        pairingManager.start()
     }
 
     override fun onStop() {
         connectionMonitor.stop()
+        pairingManager.stop()
         super.onStop()
     }
 

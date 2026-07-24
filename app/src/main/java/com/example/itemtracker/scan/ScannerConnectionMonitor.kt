@@ -2,6 +2,8 @@ package com.example.itemtracker.scan
 
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
+import android.bluetooth.BluetoothGatt
+import android.bluetooth.BluetoothGattCallback
 import android.bluetooth.BluetoothManager
 import android.bluetooth.BluetoothProfile
 import android.content.BroadcastReceiver
@@ -117,6 +119,56 @@ class ScannerConnectionMonitor(private val context: Context) {
     fun stop() {
         pollHandler.removeCallbacks(pollRunnable)
         context.unregisterReceiver(receiver)
+        reconnectClients.values.forEach {
+            try {
+                it.close()
+            } catch (e: SecurityException) {
+                // Nothing further to release if permission was revoked.
+            }
+        }
+        reconnectClients.clear()
+    }
+
+    private val reconnectClients = mutableMapOf<String, BluetoothGatt>()
+
+    private val reconnectCallback = object : BluetoothGattCallback() {
+        override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            if (newState == BluetoothProfile.STATE_CONNECTED) {
+                _status.value = ScannerStatus.CONNECTED
+            }
+        }
+    }
+
+    /**
+     * User-triggered reconnect attempt for bonded BLE devices.
+     *
+     * This unit doesn't get reconnected by Android on its own when it wakes
+     * and advertises; the OS only re-establishes the link on a manual tap in
+     * Bluetooth Settings. As a workaround, connectGatt(autoConnect = true)
+     * puts the device on the stack's background-connection list, so the
+     * phone completes the link as soon as the device advertises. Once the
+     * LE link is up, the stack's HID host can attach over it and input
+     * resumes. The GATT client is kept open (closed in stop()) because
+     * closing it could drop the link before HID attaches.
+     */
+    fun attemptReconnect() {
+        val adapter = BluetoothAdapter.getDefaultAdapter() ?: return
+        if (!adapter.isEnabled) return
+        try {
+            val manager =
+                context.getSystemService(Context.BLUETOOTH_SERVICE) as BluetoothManager
+            adapter.bondedDevices.orEmpty()
+                .filter { it.type == BluetoothDevice.DEVICE_TYPE_LE || it.type == BluetoothDevice.DEVICE_TYPE_DUAL }
+                .filter { manager.getConnectionState(it, BluetoothProfile.GATT) != BluetoothProfile.STATE_CONNECTED }
+                .forEach { device ->
+                    if (!reconnectClients.containsKey(device.address)) {
+                        reconnectClients[device.address] =
+                            device.connectGatt(context, true, reconnectCallback)
+                    }
+                }
+        } catch (e: SecurityException) {
+            // BLUETOOTH_CONNECT not granted; the button simply does nothing.
+        }
     }
 
     /** Re-checks the real BLE connection state; a no-op for Classic HID. */

@@ -7,8 +7,8 @@ key event interception, buffer-and-commit scan parsing, and live connection stat
 
 This repo currently implements the scan-capture proof of concept:
 
-- Pair with a Bluetooth HID scanner (Classic or BLE) through the device's own Bluetooth
-  settings — the app never manages pairing itself.
+- Pair with a Bluetooth HID scanner (Classic or BLE), either through the device's own
+  Bluetooth settings or directly in-app via device discovery + `createBond()`.
 - Capture scans via an Activity-level key event listener, not a focused text field, so
   input is never lost regardless of what's on screen.
 - Buffer characters and commit a scan on the Enter/CR terminator, discarding a stale
@@ -38,6 +38,7 @@ app/src/main/java/com/example/itemtracker/
     ├── ScanCaptureBuffer.kt         Buffer + commit-on-terminator logic
     ├── ScanViewModel.kt             Key event routing, serialized scan queue
     ├── ScannerConnectionMonitor.kt  Live connection status (ACL + BLE GATT poll)
+    ├── DevicePairingManager.kt      In-app device discovery + pairing (createBond())
     └── ScanScreen.kt                Compose UI
 
 app/src/test/java/com/example/itemtracker/scan/
@@ -74,3 +75,8 @@ command line once the Gradle wrapper exists:
 - The live GATT-based status poll is BLE-specific; a Classic HID scanner would still
   work for capture, but connection status would fall back to a less precise,
   broadcast-only signal.
+- No public Android API lets a third-party app force an HID profile reconnect the way
+  Settings can, so the app only observes and initiates pairing rather than forcing
+  reconnection. Testing showed the OS reliably auto-reconnects after a link-loss
+  disconnect (e.g. the scanner sleeping), but not after an explicit Settings disconnect,
+  which intentionally suppresses auto-reconnect until the user reconnects manually.
